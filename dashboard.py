@@ -1,5 +1,5 @@
 import streamlit as st
-from st_gsheets_connection import GSheetsConnection  # Энэ мөрийг яг ингэж бичнэ
+from st_gsheets_connection import GSheetsConnection 
 import pandas as pd
 
 # Вэб хуудасны тохиргоо
