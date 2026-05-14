@@ -2,65 +2,67 @@ import streamlit as st
 import pandas as pd
 import time
 
+# Хуудасны тохиргоо
 st.set_page_config(page_title="Health Dashboard", layout="wide")
 
-# Google Sheets линк - Кэшээс зайлсхийхийн тулд цаг хугацааны тамга нэмэв
+# Google Sheets CSV линк - Кэшээс бүрэн зайлсхийх "timestamp" нэмэв
 sheet_id = "1euwmWQ45bwu-EOj1anYjaTXEI5yY7kyM3qWtlCi5fdc"
-url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&ts={int(time.time())}"
+url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&cache_id={int(time.time())}"
 
-def load_data():
-    # pandas-аар шууд унших (Streamlit-ийн кэш ашиглахгүй)
-    df = pd.read_csv(url)
+@st.cache_data(ttl=60) # 1 минут тутамд датаг шинэчлэх
+def load_data(url_link):
+    df = pd.read_csv(url_link)
     df.columns = df.columns.str.strip()
     return df
 
 try:
-    df = load_data()
+    df = load_data(url)
     
+    # Огноог хөрвүүлэх ба цэвэрлэх
     if 'LogDate' in df.columns:
-        # Огноог хөрвүүлээд, алдаатайг нь хасах
         df['LogDate'] = pd.to_datetime(df['LogDate'], errors='coerce')
         df = df.dropna(subset=['LogDate'])
-        # Огноогоор өсөх дарааллаар эрэмбэлэх
+        # Огноогоор өсөх дарааллаар эрэмбэлэх (графикт зориулж)
         df = df.sort_values('LogDate')
     
     st.title("🏥 Миний Эрүүл Мэндийн Хяналт")
 
-    # Хэрэв дата байвал хамгийн сүүлийн мөрийг авах
     if not df.empty:
+        # Хамгийн сүүлчийн (хамгийн шинэ) мөрийг авах
         latest = df.iloc[-1]
 
-        def clean_num(col_name):
-            if col_name in latest:
-                val = pd.to_numeric(latest[col_name], errors='coerce')
-                return val if pd.notnull(val) else 0
+        def get_val(col):
+            if col in latest:
+                v = pd.to_numeric(latest[col], errors='coerce')
+                return v if pd.notnull(v) else 0
             return 0
 
-        # Үндсэн үзүүлэлтүүд
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Алхалт", f"{int(clean_num('Steps'))}")
-        m2.metric("BMI", f"{round(float(clean_num('BMI')), 2)}")
-        m3.metric("Өөх", f"{clean_num('BodyFat')}%")
-        m4.metric("Сахар", f"{clean_num('BloodSugar')}")
+        # Дээд талын үзүүлэлтүүд
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Алхалт", f"{int(get_val('Steps'))}")
+        col2.metric("BMI", f"{round(float(get_val('BMI')), 2)}")
+        col3.metric("Өөх", f"{get_val('BodyFat')}%")
+        col4.metric("Сахар", f"{get_val('BloodSugar')}")
 
         st.divider()
         
+        # Графикийн хэсэг
         st.subheader("📈 Өөрчлөлтийн график")
-        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-        if 'ID' in numeric_cols: numeric_cols.remove('ID')
+        num_cols = df.select_dtypes(include=['number']).columns.tolist()
+        if 'ID' in num_cols: num_cols.remove('ID')
         
-        selected_metrics = st.multiselect("Графикт харах үзүүлэлтүүд:", numeric_cols, default=['BMI', 'Steps'])
-        if selected_metrics:
-            st.line_chart(df.set_index('LogDate')[selected_metrics])
+        selected = st.multiselect("Харах үзүүлэлтүүд:", num_cols, default=['BMI', 'Steps'])
+        if selected:
+            st.line_chart(df.set_index('LogDate')[selected])
         
-        # Хамгийн сүүлийн датаны огноог тод харуулах
+        # Шинэчлэгдсэн огноог харуулах
         st.success(f"Сүүлчийн өгөгдөл шинэчлэгдсэн: {latest['LogDate'].strftime('%Y-%m-%d %H:%M')}")
         
         with st.expander("Бүх өгөгдлийг харах"):
-            # Хамгийн шинэ датаг дээр нь харуулахын тулд буурах дарааллаар харуулна
+            # Хүснэгтийг хамгийн шинэ дата нь дээрээ байхаар харуулна
             st.write(df.sort_values('LogDate', ascending=False))
     else:
-        st.warning("Хүснэгтээс өгөгдөл олдсонгүй.")
+        st.error("Google Sheets-ээс өгөгдөл уншиж чадсангүй.")
 
 except Exception as e:
     st.error(f"Алдаа гарлаа: {e}")
