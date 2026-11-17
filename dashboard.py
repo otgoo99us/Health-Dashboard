@@ -34,13 +34,13 @@ def load_data(url):
         st.error(f"Хүснэгтийг уншиж чадсангүй. Алдаа: {e}")
         return pd.DataFrame()
 
-# Сүүлийн бодит утга болон 1 сар (30 хоног), N хоногийн дундаж тооцоолох функц
-def get_stats(df, col_name, period_days=365):
+# Сүүлийн бодит утга болон 1 сар (30 хоног), 3 сар (90 хоног), 1 жил (365 хоног) дундаж тооцоолох функц
+def get_stats(df, col_name):
     if col_name not in df.columns:
-        return None, None, None
+        return None, None, None, None
     valid = df[df[col_name].notna() & (df[col_name] > 0)].copy()
     if valid.empty:
-        return None, None, None
+        return None, None, None, None
     
     latest_val = valid.iloc[-1][col_name]
     
@@ -50,12 +50,13 @@ def get_stats(df, col_name, period_days=365):
     ref_date = past_valid['LogDate'].max() if not past_valid.empty else valid['LogDate'].max()
     
     avg_1m = valid[valid['LogDate'] >= (ref_date - pd.Timedelta(days=30))][col_name].mean()
-    avg_long = valid[valid['LogDate'] >= (ref_date - pd.Timedelta(days=period_days))][col_name].mean()
+    avg_3m = valid[valid['LogDate'] >= (ref_date - pd.Timedelta(days=90))][col_name].mean()
+    avg_1y = valid[valid['LogDate'] >= (ref_date - pd.Timedelta(days=365))][col_name].mean()
     
-    return latest_val, avg_1m, avg_long
+    return latest_val, avg_1m, avg_3m, avg_1y
 
-# График дээр 2 дундаж зураас нэмэх туслах функц
-def add_avg_lines(fig, avg_1m, avg_long, label_long="1 жилийн дундаж", fmt="{:.1f}"):
+# График дээр дундаж зураас нэмэх туслах функц
+def add_avg_lines(fig, avg_1m, avg_long, label_long="1 жилийн дундаж", fmt="{:.1f}", avg_3m=None):
     if pd.notna(avg_1m):
         fig.add_hline(
             y=avg_1m,
@@ -67,15 +68,29 @@ def add_avg_lines(fig, avg_1m, avg_long, label_long="1 жилийн дундаж
             annotation_font=dict(size=12, color="#0055ff", family="Arial Black"),
             annotation_bgcolor="rgba(255, 255, 255, 0.85)"
         )
-    if pd.notna(avg_long):
+    if avg_3m is not None and pd.notna(avg_3m):
         fig.add_hline(
-            y=avg_long,
+            y=avg_3m,
             line_dash="dot",
             line_color="#ff6600",
             line_width=3,
-            annotation_text=f"  {label_long}: {fmt.format(avg_long)}  ",
+            annotation_text=f"  3 сарын дундаж: {fmt.format(avg_3m)}  ",
             annotation_position="bottom right",
             annotation_font=dict(size=12, color="#ff6600", family="Arial Black"),
+            annotation_bgcolor="rgba(255, 255, 255, 0.85)"
+        )
+    if pd.notna(avg_long):
+        pos = "bottom left" if avg_3m is not None else "bottom right"
+        color = "#800080" if avg_3m is not None else "#ff6600"
+        dash = "dashdot" if avg_3m is not None else "dot"
+        fig.add_hline(
+            y=avg_long,
+            line_dash=dash,
+            line_color=color,
+            line_width=3,
+            annotation_text=f"  {label_long}: {fmt.format(avg_long)}  ",
+            annotation_position=pos,
+            annotation_font=dict(size=12, color=color, family="Arial Black"),
             annotation_bgcolor="rgba(255, 255, 255, 0.85)"
         )
 
@@ -83,14 +98,14 @@ df = load_data(csv_url)
 
 if not df.empty:
     # Бүх үзүүлэлтийн статистикийг бодох
-    st_lat, st_1m, st_1y = get_stats(df, 'Steps', 365)
-    su_lat, su_1m, su_3m = get_stats(df, 'BloodSugar', 90)
-    sys_lat, sys_1m, sys_1y = get_stats(df, 'SysBP', 365)
-    dia_lat, dia_1m, dia_1y = get_stats(df, 'DiaBP', 365)
-    pu_lat, pu_1m, pu_1y = get_stats(df, 'Pulse', 365)
-    bmi_lat, bmi_1m, bmi_1y = get_stats(df, 'BMI', 365)
-    wa_lat, wa_1m, wa_1y = get_stats(df, 'Waist', 365)
-    fat_lat, fat_1m, fat_1y = get_stats(df, 'BodyFat', 365)
+    st_lat, st_1m, _, st_1y = get_stats(df, 'Steps')
+    su_lat, su_1m, su_3m, su_1y = get_stats(df, 'BloodSugar')
+    sys_lat, sys_1m, _, sys_1y = get_stats(df, 'SysBP')
+    dia_lat, dia_1m, _, dia_1y = get_stats(df, 'DiaBP')
+    pu_lat, pu_1m, _, pu_1y = get_stats(df, 'Pulse')
+    bmi_lat, bmi_1m, _, bmi_1y = get_stats(df, 'BMI')
+    wa_lat, wa_1m, _, wa_1y = get_stats(df, 'Waist')
+    fat_lat, fat_1m, _, fat_1y = get_stats(df, 'BodyFat')
 
     # --- ХЭСЭГ 1: БҮХ ҮЗҮҮЛЭЛТИЙН СҮҮЛИЙН БА ДУНДАЖ УТГУУД ---
     st.subheader("📌 Бүх Үзүүлэлтийн Сүүлийн Утга ба Дундаж")
@@ -105,8 +120,8 @@ if not df.empty:
     with c3:
         st.metric("🩸 Сүүлийн Сахар", f"{su_lat:.1f} mmol/L" if su_lat else "Байхгүй")
     with c4:
-        st.metric("📅 Сахар (1 сар / 3 сар)", 
-                  f"{su_1m:.2f} / {su_3m:.2f}" if pd.notna(su_1m) and pd.notna(su_3m) else "Байхгүй")
+        st.metric("📅 Сахар (1сар / 3сар / 1жил)", 
+                  f"{su_1m:.2f} / {su_3m:.2f} / {su_1y:.2f}" if pd.notna(su_1m) and pd.notna(su_3m) and pd.notna(su_1y) else "Байхгүй")
 
     # 2. Даралт ба Пульс
     c5, c6, c7, c8 = st.columns(4)
@@ -156,9 +171,9 @@ if not df.empty:
             df_sugar = df_chart[df_chart['BloodSugar'].notna() & (df_chart['BloodSugar'] > 0)]
             if not df_sugar.empty:
                 st.subheader("🩸 Цусны Сахарын Өөрчлөлт")
-                fig_sugar = px.line(df_sugar, x='LogDate_Str', y='BloodSugar', markers=True, title="Сахарын хяналт ба Дундаж")
+                fig_sugar = px.line(df_sugar, x='LogDate_Str', y='BloodSugar', markers=True, title="Сахарын хяналт ба Дундаж (1сар, 3сар, 1жил)")
                 fig_sugar.update_traces(line_color='#d62728', line_width=2)
-                add_avg_lines(fig_sugar, su_1m, su_3m, "3 сарын дундаж", "{:.2f}")
+                add_avg_lines(fig_sugar, su_1m, su_1y, "1 жилийн дундаж", "{:.2f}", avg_3m=su_3m)
                 fig_sugar.update_layout(xaxis_title="Огноо", yaxis_title="mmol/L", xaxis_type='category')
                 st.plotly_chart(fig_sugar, use_container_width=True)
 
